@@ -1,0 +1,6 @@
+{
+    "require": {
+        "phpagi/phpagi": "^2.20"
+    }
+}
+
