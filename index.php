@@ -12,7 +12,7 @@ $callerId = $agi->parse_callerid()['username'];
 $hasPassword = isset($_SESSION['password_' . $callerId]);
 
 // Check if the password has expired for this caller ID
-if ($hasPassword && time() - $_SESSION['time_' . $callerId] > 100) {
+if ($hasPassword && time() - $_SESSION['time_' . $callerId] > 180) {
     unset($_SESSION['password_' . $callerId]);
 }
 
@@ -36,7 +36,7 @@ function setPassword($callerId, $agi) {
     }
     $_SESSION['password_' . $callerId] = $password1;
     $_SESSION['time_' . $callerId] = time();
-    $_SESSION['expiration_' . $callerId] = time() + 100; // set expiration time 3 minutes in the future
+    $_SESSION['expiration_' . $callerId] = time() + 180; // set expiration time 3 minutes in the future
     // Log the password and its expiration time
     $logMsg = "Password set for caller ID $callerId: $password1, expiration time: " . date("Y-m-d H:i:s", $_SESSION['expiration_' . $callerId]);
     error_log($logMsg);
@@ -61,7 +61,7 @@ while (true) {
             // Store the phone number in the session for 3 minutes
             $_SESSION['call_' . $callerId] = $extension;
             $_SESSION['time_' . $callerId] = time();
-            $_SESSION['expiration_' . $callerId] = time() + 100; // set expiration time 3 minutes in the future
+            $_SESSION['expiration_' . $callerId] = time() + 180; // set expiration time 3 minutes in the future
             $logMsg = "Password set for caller ID $callerId: password_, expiration time: " . date("Y-m-d H:i:s", $_SESSION['expiration_' . $callerId]);
             error_log($logMsg);
             $agi->exec('Dial', "SIP/$extension");
