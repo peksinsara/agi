@@ -1,50 +1,96 @@
 #!/usr/bin/php -q
 <?php
+date_default_timezone_set('Europe/Sarajevo');
 
 // Start the AGI session
+ini_set('session.gc_maxlifetime', 3*60);
+ini_set('session.gc_divisor', '1');
+ini_set('session.gc_probability', '1');
+
 session_start();
 include('/var/lib/asterisk/agi-bin/agitask/phpagi/src/phpagi.php');
 $agi = new AGI();
 
-// Get the caller ID
 $callerId = $agi->parse_callerid()['username'];
-
-// Check if the password has already been set for this caller ID
 $hasPassword = isset($_SESSION['password_' . $callerId]);
 
 // Check if the password has expired for this caller ID
 if ($hasPassword && time() - $_SESSION['time_' . $callerId] > 180) {
+    error_log('expired password');
     unset($_SESSION['password_' . $callerId]);
 }
 
 // Set the password if it hasn't been set or has expired
-if (!$hasPassword || $_SESSION['expiration_' . $callerId] < time()) {
+if (!$hasPassword || time() - $_SESSION['time_' . $callerId] > 180) {
     setPassword($callerId, $agi);
 }
 
-function setPassword($callerId, $agi) {
-    // Check if the password has expired before playing "is-not-set" message
-    if ($_SESSION['expiration_' . $callerId] < time()) {
+// Prompt for old password and proceed with options
+if ($hasPassword) {
+    error_log('has password');
+    $agi->stream_file('enter-password');
+    $oldPassword = $agi->get_data('enter-password', 5000, 4)['result'];
+    sleep(0.5);
+    if ($oldPassword == $_SESSION['password_' . $callerId]) {
+        // Old password was correct, proceed with options
+        $agi->stream_file('good');
+    } else {
+        // Old password was incorrect, prompt for new password
+        error_log('wrong password. setting up new one');
+        $agi->stream_file('wrong-try-again-smarty');
+        setPassword($callerId, $agi);
+    }
+} else {
+    // No password set yet
+    error_log('password not set');
+    setPassword($callerId, $agi);
+    // Check if password was set successfully
+    if (!isset($_SESSION['password_' . $callerId])) {
         $agi->stream_file('is-not-set');
     }
-
-    $password1 = $agi->get_data('enter-password', 5000, 4)['result'];
-    sleep(0.5);
-    $password2 = $agi->get_data('vm-reenterpassword', 5000, 4)['result'];
-    if ($password1 != $password2) {
-        $agi->stream_file('wrong-try-again-smarty');
-        exit;
-    }
-    $_SESSION['password_' . $callerId] = $password1;
-    $_SESSION['time_' . $callerId] = time();
-    $_SESSION['expiration_' . $callerId] = time() + 180; // set expiration time 3 minutes in the future
-    // Log the password and its expiration time
-    $logMsg = "Password set for caller ID $callerId: $password1, expiration time: " . date("Y-m-d H:i:s", $_SESSION['expiration_' . $callerId]);
-    error_log($logMsg);
-    $agi->stream_file('good');
 }
 
 
+function setPassword($callerId, $agi) {
+    // Check if password has already been set
+    if (isset($_SESSION['password_' . $callerId])) {
+        // Password set before
+        error_log('password set before');
+        return;
+    }
+
+    $newPassword = true;
+    while ($newPassword) {
+        error_log('create new password');
+        $password1 = $agi->get_data('enter-password', 5000, 4)['result'];
+        sleep(0.5);
+        $password2 = $agi->get_data('vm-reenterpassword', 5000, 4)['result'];
+        if ($password1 != $password2) {
+            $agi->stream_file('wrong-try-again-smarty');
+            continue;
+        }
+        $_SESSION['password_' . $callerId] = $password1;
+        $_SESSION['time_' . $callerId] = time();
+        $_SESSION['expiration_' . $callerId] = time() + 180; // set expiration time 3 minutes in the future
+        // Log the password and its expiration time
+        $logMsg = "Password set for caller ID $callerId: $password1, expiration time: " . date("Y-m-d H:i:s", $_SESSION['expiration_' . $callerId]);
+        error_log($logMsg);
+        $agi->stream_file('good');
+        $newPassword = false;
+    }
+}
+
+// Remove all passwords after 3 minutes
+if (time() - $_SESSION['time_' . $callerId] > 180) {
+    unset($_SESSION['password_' . $callerId]);
+}
+
+// Restart session after 3 minutes
+if (isset($_SESSION['call_' . $callerId]) && time() - $_SESSION['time_' . $callerId] > 180) {
+    session_unset();
+    session_destroy();
+    session_start();
+}
 
 // Display the options
 while (true) {
@@ -63,8 +109,6 @@ while (true) {
             $_SESSION['call_' . $callerId] = $extension;
             $_SESSION['time_' . $callerId] = time();
             $_SESSION['expiration_' . $callerId] = time() + 180; // set expiration time 3 minutes in the future
-            $logMsg = "Password set for caller ID $callerId: password_, expiration time: " . date("Y-m-d H:i:s", $_SESSION['expiration_' . $callerId]);
-            error_log($logMsg);
             $agi->exec('Dial', "SIP/$extension");
             break;
         case 2:
