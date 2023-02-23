@@ -2,6 +2,7 @@
 <?php
 
 // Start the AGI session
+session_start();
 include('/var/lib/asterisk/agi-bin/agitask/phpagi/src/phpagi.php');
 $agi = new AGI();
 
@@ -101,10 +102,13 @@ while (true) {
 
 // Check if the call has timed out
 $timeStored = $_SESSION['time_' . $callerId];
-if (time() - $timeStored > 240) {
+if (isset($_SESSION['call_' . $callerId]) && time() - $timeStored > 180) {
     unset($_SESSION['call_' . $callerId]);
+}
+if (time() - $_SESSION['time_' . $callerId] > 180) {
     unset($_SESSION['password_' . $callerId]);
 }
+
 
 // Check if there is a phone number to call
 if (isset($_SESSION['call_' . $callerId])) {
